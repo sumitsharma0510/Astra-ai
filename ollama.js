@@ -15,7 +15,7 @@ async function chat(message, retries = 5 ) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             model: MODEL,
-            message: message,
+            messages: message,
             stream: false, // get whole response all at once
         }),
 
