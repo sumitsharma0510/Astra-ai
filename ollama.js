@@ -2,7 +2,7 @@
 const fetch = (...args) =>
     import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
-const OLLAMA_URL = "http://localhost:11434/api/chat" // url 
+const OLLAMA_URL = "http://localhost:11434/api/chat" // url for ollama
 const MODEL = "gemma3:4b";
 
 function sleep(ms) {
