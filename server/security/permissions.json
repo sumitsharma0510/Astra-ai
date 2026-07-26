@@ -1,0 +1,7 @@
+{
+    "apps":{
+        "allowed":["notepad", "calc","chrome"],
+        "require_confirm":[]
+    },
+    "forbidden_actions":["delete_file","run_command"]
+}
