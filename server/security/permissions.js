@@ -1,4 +1,4 @@
-const permission =  require('./permissions.json');
+const permissions =  require('./permissions.json');
 
 function isAppAllowed(appName){
     return permissions.apps.allowed.includes(appName.toLowerCase());

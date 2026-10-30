@@ -293,4 +293,9 @@ dist
 # End of https://www.toptal.com/developers/gitignore/api/node
 
 config.bat
-.env
+
+.repomix-output.txt
+
+.repomix-output.xml
+
+.repomix.config.json

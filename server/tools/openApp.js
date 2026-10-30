@@ -6,7 +6,7 @@ const { setDefaultAutoSelectFamily } = require("net");
 function openApp(appName){
     return new Promise((resolve,reject)=>{
         if(!isAppAllowed(appName)) return reject(new Error (`App not permitted: ${appName}`));
-        exec(`starts ${appName}`,{shell:"cmd.exe"},(err)=>{
+        exec(`start ${appName}`,{shell:"cmd.exe"},(err)=>{
             if(err) return reject(err);
             setTimeout(resolve,800);
         });

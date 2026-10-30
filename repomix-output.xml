@@ -1,0 +1,912 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+INFO/
+  ASTRA_Complete_Overview_and_Roadmap.pdf
+  ASTRA_Tech_Stack.pdf
+  ASTRA_Technology_Roadmap.pdf
+  Project_ASTRA_AI_Agent_Roadmap.pdf
+  suggestion by claude.pdf
+server/
+  ai.client/
+    ai.service.js
+    ollamaClient.js
+  core/
+    commandRouter.js
+    sessioncontext.js
+  security/
+    permissions.js
+    permissions.json
+  tools/
+    index.js
+    openApp.js
+    Time.tool.js
+    toolsRegistry.js
+  utils/
+    logger.js
+.gitignore
+index.js
+ollama.js
+package.json
+readme.md
+task.txt
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="server/ai.client/ai.service.js">
+const { Ollama } = require('ollama');
+
+const ollama = new Ollama({ host: 'http://localhost:11434' });
+
+async function askAI(prompt) {
+    const response = await ollama.chat({
+        model: 'llama3',
+        messages: [{ role: 'user', content: prompt }]
+    });
+    return response.message.content;
+}
+
+module.exports = { askAI };
+</file>
+
+<file path="server/ai.client/ollamaClient.js">
+// server/ai.client/ollamaClient.js
+
+const { error } = require("../utils/logger");
+
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
+
+const OLLAMA_URL = "http://localhost:11434/api/chat";
+const MODEL = "gemma3:4b";
+
+const SYSTEM_PROMPT = `You are ASTRA, a desktop automation assistant.
+
+You have access to these actions ONLY:
+- open_app(app_name: string)
+- type_text(text: string)
+- key_press(key: string)
+- none
+
+Respond ONLY with a single JSON object, no markdown fences, no extra text:
+{"action": "...", "params": {...}, "reply": "..."}
+
+Examples:
+User: "open notepad"
+{"action":"open_app","params":{"app_name":"notepad"},"reply":"Opening Notepad now."}
+
+User: "hey bro what's up"
+{"action":"none","params":{},"reply":"Not much, just here! What do you need?"}`;
+
+function sleep(ms){
+    return new Promise((resolve)=>setTimeout(resolve,ms));
+}
+
+// logic
+async function chat(messages, retires=5){
+    const response = await fetch(OLLAMA_URL,{
+        method:"POST",
+        headers:{"ContentType":"application/json"},
+        body:json.stringify({
+            model:MODEL,
+            messages,
+            stream:false,
+        }),
+    });
+    if(!response.ok){
+        throw new Error(`Ollama Error ${response.status} ${response.statusText}`);
+    }
+
+    const data = response.json();
+    if (data.done_reason === "load"){
+        if(retires===0){
+            throw new Error("model failed to load after multiple attempts");
+        }
+        console.log(`⏳model is Warming up, retrying in 3s... ( ${retires} attempts left)`);
+        await sleep(3000);
+        return await chat(messages, retires-1);
+    }
+    return data.messages.content;
+}
+// New: builds the message array with the system prompt baked in,
+// so index.js never has to think about prompt engineering.
+async function askOllama(userInput, history=[]){
+    const messages=[
+        {role:"system",content:SYSTEM_PROMPT},
+        ...history,
+        {role:"user",content: userInput},
+    ];
+
+    return await chat(messages);
+}
+
+function tryParseJSON(raw){
+    try{
+        const clean = raw.replace(/```json|```/g,"").trim();
+        return JSON.parse(clean)
+    }catch{
+        return null;
+    }
+}
+
+
+function validateAction(parsed){
+    const validActions = ["open_app","type_text","key_press","none"];
+    return parsed && validActions.includes(parsed.action) && typeof parsed.reply ==="string";
+}
+
+
+module.exports = { chat, askOllama, tryParseJSON, validateAction };
+</file>
+
+<file path="server/core/commandRouter.js">
+const tools = require('../tools/toolsRegistry');
+const {askAI} = require('../ai.client/ai.service');
+
+async function routeCommand(input) {
+
+    return askAI(input);
+}
+
+module.exports = routeCommand;
+</file>
+
+<file path="server/core/sessioncontext.js">
+
+</file>
+
+<file path="server/security/permissions.js">
+const permission =  require('./permissions.json');
+
+function isAppAllowed(appName){
+    return permissions.apps.allowed.includes(appName.toLowerCase());
+}
+
+function isActionForbidden(action){
+    return permissions.forbidden_actions.includes(action);
+}
+
+module.exports ={
+    isAppAllowed,
+    isActionForbidden
+}
+</file>
+
+<file path="server/security/permissions.json">
+{
+    "apps":{
+        "allowed":["notepad", "calc","chrome"],
+        "require_confirm":[]
+    },
+    "forbidden_actions":["delete_file","run_command"]
+}
+</file>
+
+<file path="server/tools/index.js">
+const openApp = require("./openApp");
+const robot = require("robotjs");
+
+module.exports = {
+    open_app: (params)=> openApp(params.app_name),
+    type_text: (params)=> robot.typeString(params.text),
+    key_press: (params)=> robot.keyTap(params.key),
+    none: async() => {},
+};
+</file>
+
+<file path="server/tools/openApp.js">
+const {exec} = require("child_process");
+const {isAppAllowed} = require("../security/permissions");
+const { setDefaultAutoSelectFamily } = require("net");
+
+
+function openApp(appName){
+    return new Promise((resolve,reject)=>{
+        if(!isAppAllowed(appName)) return reject(new Error (`App not permitted: ${appName}`));
+        exec(`starts ${appName}`,{shell:"cmd.exe"},(err)=>{
+            if(err) return reject(err);
+            setTimeout(resolve,800);
+        });
+    });
+}
+
+module.exports = openApp;
+</file>
+
+<file path="server/tools/Time.tool.js">
+function getCurrentTime() {
+    return new Date().toLocaleTimeString();
+}
+
+module.exports = {
+    name: "Time",
+    execute: getCurrentTime
+};
+</file>
+
+<file path="server/tools/toolsRegistry.js">
+const timeTool = require('./Time.tool');
+
+const tools = {
+    time: timeTool
+};
+
+module.exports = tools;
+</file>
+
+<file path="server/utils/logger.js">
+const { warn } = require('console');
+const fs =  require('fs');
+const path = require('path');
+const { json } = require('stream/consumers');
+const logFile= path.join(__dirname,"../../astra_audit.log");
+
+function write(level,msg,meta={}){
+    const line = JSON.stringify({level,msg,meta , ts: new Date().toISOString()})
+    fs.appendFileSync(logFile, line+"\n");
+    console.log(`[${level.toUpperCase()}] ${msg}`);
+
+}
+
+module.exports={
+    info:(msg,meta)=> write("info",msg,meta),
+    warn:(msg,meta)=> write("info",msg,meta),
+    error:(msg,meta)=> write("info",msg,meta),
+};
+</file>
+
+<file path="readme.md">
+astra ai
+</file>
+
+<file path="task.txt">
+User says:
+"Open Chrome and search YouTube"
+
+↓
+Input Layer
+
+↓
+Intent Detection
+
+↓
+Task Planning
+
+↓
+Tool Selection
+
+↓
+Automation Execution
+
+↓
+Response Back
+
+
+
+
+USER_MESSAGE_RECEIVED
+VOICE_COMMAND_RECEIVED
+APP_OPENED
+DOWNLOAD_COMPLETED
+SCREEN_LOCKED
+AI_RESPONSE_STREAM
+
+
+
+
+tools/
+ ├── openAppTool.js
+ ├── searchWebTool.js
+ ├── shutdownTool.js
+ └── screenshotTool.js
+
+ Ambitions
+
+1. Open Chrome
+2. Search ChatGPT
+3. Open ChatGPT website
+4. Read code from VSCode
+5. Copy code
+6. Paste into ChatGPT
+7. Submit prompt
+
+
+Multi-App Contextual Automation✨📊
+
+Required Layers
+
+Planner
+↓
+Executor
+↓
+Automation Engine
+↓
+State Manager
+
+The Required Structure
+
+[
+  {
+    "tool": "openApp",
+    "args": {
+      "app": "chrome"
+    }
+  },
+  {
+    "tool": "searchWeb",
+    "args": {
+      "query": "ChatGPT"
+    }
+  },
+  {
+    "tool": "openWebsite",
+    "args": {
+      "url": "https://chatgpt.com"
+    }
+  },
+  {
+    "tool": "focusApp",
+    "args": {
+      "app": "vscode"
+    }
+  },
+  {
+    "tool": "copySelectedText"
+  },
+  {
+    "tool": "focusApp",
+    "args": {
+      "app": "chrome"
+    }
+  },
+  {
+    "tool": "pasteClipboard"
+  }
+]
+
+Apps Required
+[System-TOOLS]
+open app
+close app
+focus app
+minimize app
+maximize app
+
+
+
+Possible tools
+
+openAppTool.js
+focusWindowTool.js
+closeAppTool.js
+
+
+Browser Controls
+[Browser-Tools]
+open URL
+search query
+click element
+type text
+
+Clipboard System [for copy pasting]
+
+
+Window Management
+
+current active app
+open windows
+focused window
+browser tabs
+</file>
+
+<file path="index.js">
+// index.js
+const { chat } = require("./ollama");
+const readline = require("readline");
+const tools = require("./server/tools"); 
+const { runCommand } = require("./server/core/commandRunner"); 
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+
+const conversationHistory = [];
+
+
+// NEW: seed history with the system prompt, once, before any user turns
+conversationHistory = [{ role: "system", content: SYSTEM_PROMPT }];
+
+async function main() {
+  console.log("🤖 ASTRA AI is running. Type your command (or 'exit' to quit).\n");
+
+  const ask = () => {
+    rl.question("You: ", async (input) => {
+      if (input.toLowerCase() === "exit") {
+        console.log("Shutting down ASTRA...");
+        rl.close();
+        return;
+      }
+
+      // Add user message to history
+      conversationHistory.push({ role: "user", content: input });
+
+      try {
+        const reply = await chat(conversationHistory);
+
+         // NEW: try to parse the model's reply as an action
+        const parsed = tryParseJSON(reply);
+
+        if (!parsed || !validateAction(parsed)) {
+          // model just chatted in plain text
+        console.log(`\nASTRA: ${reply}\n`);
+        }
+        else{
+          const executor = tools[parsed.action];
+          const result = await runCommand(parsed.action, parsed.params, executor);
+
+          if (!result.ok) {
+            console.log(`\nASTRA: (couldn't do that — ${result.reason}) ${parsed.reply}\n`);
+          } else {
+            console.log(`\nASTRA: ${parsed.reply}\n`);
+          }
+        }
+
+        // Add assistant reply to history (multi-turn memory)
+        conversationHistory.push({ role: "assistant", content: reply });
+      } catch (err) {
+        console.error("Error talking to Ollama:", err.message);
+      }
+
+      ask(); // loop
+    });
+  };
+
+  ask();
+}
+
+main();
+</file>
+
+<file path=".gitignore">
+# Created by https://www.toptal.com/developers/gitignore/api/node
+
+# Edit at https://www.toptal.com/developers/gitignore?templates=node
+
+
+
+### Node ###
+
+# Logs
+
+logs
+
+*.log
+
+npm-debug.log*
+
+yarn-debug.log*
+
+yarn-error.log*
+
+lerna-debug.log*
+
+.pnpm-debug.log*
+
+
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+
+
+# Runtime data
+
+pids
+
+*.pid
+
+*.seed
+
+*.pid.lock
+
+
+
+# Directory for instrumented libs generated by jscoverage/JSCover
+
+lib-cov
+
+
+
+# Coverage directory used by tools like istanbul
+
+coverage
+
+*.lcov
+
+
+
+# nyc test coverage
+
+.nyc_output
+
+
+
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+
+.grunt
+
+
+
+# Bower dependency directory (https://bower.io/)
+
+bower_components
+
+
+
+# node-waf configuration
+
+.lock-wscript
+
+
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+
+build/Release
+
+
+
+# uploads
+
+uploads/
+
+# Dependency directories
+
+node_modules/
+
+jspm_packages/
+
+
+
+# Snowpack dependency directory (https://snowpack.dev/)
+
+web_modules/
+
+
+
+# TypeScript cache
+
+*.tsbuildinfo
+
+
+
+# Optional npm cache directory
+
+.npm
+
+
+
+# Optional eslint cache
+
+.eslintcache
+
+
+
+# Optional stylelint cache
+
+.stylelintcache
+
+
+
+# Microbundle cache
+
+.rpt2_cache/
+
+.rts2_cache_cjs/
+
+.rts2_cache_es/
+
+.rts2_cache_umd/
+
+
+
+# Optional REPL history
+
+.node_repl_history
+
+
+
+# Output of 'npm pack'
+
+*.tgz
+
+
+
+# Yarn Integrity file
+
+.yarn-integrity
+
+
+
+# dotenv environment variable files
+
+.env.development.local
+
+.env.test.local
+
+.env.production.local
+
+
+
+# parcel-bundler cache (https://parceljs.org/)
+
+.cache
+
+.parcel-cache
+
+
+
+# Next.js build output
+
+.next
+
+out
+
+
+
+# Nuxt.js build / generate output
+
+.nuxt
+
+dist
+
+
+
+# Gatsby files
+
+.cache/
+
+# Comment in the public line in if your project uses Gatsby and not Next.js
+
+# https://nextjs.org/blog/next-9-1#public-directory-support
+
+# public
+
+
+
+# vuepress build output
+
+.vuepress/dist
+
+
+
+# vuepress v2.x temp and cache directory
+
+.temp
+
+
+
+# Docusaurus cache and generated files
+
+.docusaurus
+
+
+
+# Serverless directories
+
+.serverless/
+
+
+
+# FuseBox cache
+
+.fusebox/
+
+
+
+# DynamoDB Local files
+
+.dynamodb/
+
+
+
+# TernJS port file
+
+.tern-port
+
+
+
+# Stores VSCode versions used for testing VSCode extensions
+
+.vscode-test
+
+
+
+# yarn v2
+
+.yarn/cache
+
+.yarn/unplugged
+
+.yarn/build-state.yml
+
+.yarn/install-state.gz
+
+.pnp.*
+
+
+
+### Node Patch ###
+
+# Serverless Webpack directories
+
+.webpack/
+
+
+
+# Optional stylelint cache
+
+
+
+# SvelteKit build / generate output
+
+.svelte-kit
+
+
+
+# zip file
+
+*.zip
+
+
+
+# End of https://www.toptal.com/developers/gitignore/api/node
+
+config.bat
+.env
+</file>
+
+<file path="package.json">
+{
+  "name": "astra-ai",
+  "version": "1.0.0",
+  "description": "astra ai",
+  "main": "index.js",
+  "dependencies": {
+    "anymatch": "^3.1.3",
+    "balanced-match": "^4.0.4",
+    "binary-extensions": "^2.3.0",
+    "brace-expansion": "^5.0.6",
+    "braces": "^3.0.3",
+    "chokidar": "^3.6.0",
+    "debug": "^4.4.3",
+    "fill-range": "^7.1.1",
+    "glob-parent": "^5.1.2",
+    "has-flag": "^3.0.0",
+    "ignore-by-default": "^1.0.1",
+    "is-binary-path": "^2.1.0",
+    "is-extglob": "^2.1.1",
+    "is-glob": "^4.0.3",
+    "is-number": "^7.0.0",
+    "minimatch": "^10.2.5",
+    "ms": "^2.1.3",
+    "nodemon": "^3.1.14",
+    "normalize-path": "^3.0.0",
+    "ollama": "^0.6.3",
+    "picomatch": "^2.3.2",
+    "pstree.remy": "^1.1.8",
+    "readdirp": "^3.6.0",
+    "semver": "^7.8.1",
+    "simple-update-notifier": "^2.0.0",
+    "supports-color": "^5.5.0",
+    "to-regex-range": "^5.0.1",
+    "touch": "^3.1.1",
+    "undefsafe": "^2.0.5",
+    "whatwg-fetch": "^3.6.20"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon server/index.js",
+    "start": "node server/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sumitsharmabca05/astra-ai.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sumitsharmabca05/astra-ai/issues"
+  },
+  "homepage": "https://github.com/sumitsharmabca05/astra-ai#readme"
+}
+</file>
+
+<file path="ollama.js">
+// // Fetching 
+// const fetch = (...args) =>
+//     import("node-fetch").then(({ default: fetch }) => fetch(...args));
+
+// const OLLAMA_URL = "http://localhost:11434/api/chat" // url for ollama
+// const MODEL = "gemma3:4b";
+
+// function sleep(ms) {
+//     return new Promise(resolve => setTimeout(resolve, ms));
+// }
+
+// async function chat(message, retries = 5 ) {
+//     const response = await fetch(OLLAMA_URL, {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify({
+//             model: MODEL,
+//             messages: message,
+//             stream: false, // get whole response all at once
+//         }),
+
+//     });
+//     if(!response.ok){
+//         throw new Error(`ollama error: ${response.status} ${response.StatusText}`);
+//     }
+
+//     const data = await response.json();
+//      if (data.done_reason === "load") {
+//         if (retries === 0) {
+//             throw new Error("Model failed to load after multiple attempts.");
+//         }
+//         console.log(`⏳ Model is warming up, retrying in 3s... (${retries} attempts left)`);
+//         await sleep(3000); // wait 3 seconds before retrying
+//         return await chat(message, retries - 1);
+//     }
+//     return data.message.content
+// }
+
+
+// module.exports = {chat};
+</file>
+
+</files>
