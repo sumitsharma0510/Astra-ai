@@ -294,3 +294,9 @@ dist
 
 config.bat
 .env
+
+.repomix-output.txt
+
+.repomix-output.xml
+
+.repomix.config.json
